@@ -63,14 +63,24 @@ def ps(*options, check=False):
             yield int(parts[0]), parts[1], parts[2].split()
 
 
+SERVICE_NAMES = ('node', 'dsh')
+# The macOS launcher runs the service inside the desktop app, whose process name is the app name rather than `node` or `dsh`.
+SERVICE_MARKERS = ('dsh-desktop-host/lib/cli.js',)
+
+
+def is_service(name, args):
+    """Return whether a process runs the DSH service: `node` or `dsh` where the CLI runs on its own, and the desktop host elsewhere."""
+    return name in SERVICE_NAMES or any(marker in ' '.join(args) for marker in SERVICE_MARKERS)
+
+
 def running(pid, profile):
     """Return whether `pid` is currently running the DSH service for `profile` (`ps -p` returns nothing once exited)."""
-    return any(found == pid and name in ('node', 'dsh') and serves(args, profile) for found, name, args in ps('-p', str(pid)))
+    return any(found == pid and is_service(name, args) and serves(args, profile) for found, name, args in ps('-p', str(pid)))
 
 
 def processes(profile):
     """Return PIDs of all running DSH service processes for `profile`, including instances started outside this script and the recorded `service.pid` while still running."""
-    found = [pid for pid, name, args in ps('-ax', check=True) if name in ('node', 'dsh') and serves(args, profile)]
+    found = [pid for pid, name, args in ps('-ax', check=True) if is_service(name, args) and serves(args, profile)]
     try:
         pid = int((control(profile) / 'service.pid').read_text())
     except (OSError, ValueError):
